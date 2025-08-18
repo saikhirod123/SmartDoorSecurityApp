@@ -3,7 +3,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from './firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 export default function Signup() {
   const [name, setName] = useState('');

@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from './firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 export default function Login() {
   const [building, setBuilding] = useState('');

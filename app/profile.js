@@ -14,7 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { db, storage } from "./firebaseConfig";
+import { db, storage } from "../firebaseConfig";
 
 export default function ProfilePage() {
   const { name: initialName, building: initialBuilding, flatNumber: initialFlatNumber, mobile } = useLocalSearchParams();
