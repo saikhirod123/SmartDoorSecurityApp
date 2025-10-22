@@ -1,334 +1,258 @@
-import * as ImagePicker from "expo-image-picker";
-import { Link, useLocalSearchParams } from "expo-router";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { useEffect, useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { db, storage } from "../firebaseConfig";
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
-export default function ProfilePage() {
-  const { name: initialName, building: initialBuilding, flatNumber: initialFlatNumber, mobile } = useLocalSearchParams();
+const BG_COLOR = '#F7F8FB';
 
-  const [name, setName] = useState(initialName || "");
-  const [building, setBuilding] = useState(initialBuilding || "");
-  const [flatNumber, setFlatNumber] = useState(initialFlatNumber || "");
-  const [imageUri, setImageUri] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [updatingInfo, setUpdatingInfo] = useState(false);
+export default function AccountPage() {
+  const router = useRouter();
 
-  const userDocId = mobile;
+  // Dummy user data; replace with real queries/states as needed
+  const [user, setUser] = useState({
+    name: 'John Somarriba',
+    unit: 'Unit 100',
+    email: 'john@example.com',
+    phone: '+1 555-123-4567',
+    pin: '1234',
+    away: 'Not Defined',
+    photoURL: ''
+  });
+  const [secure, setSecure] = useState(true);
 
-  // Fetch profile image and data from Firestore on component mount
   useEffect(() => {
-    (async () => {
-      try {
-        const docRef = doc(db, "users", userDocId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setName(data.name || "");
-          setBuilding(data.building || "");
-          setFlatNumber(data.flatNumber || "");
-          setImageUri(data.photoURL || null);
-        }
-      } catch (err) {
-        Alert.alert("Error", "Failed to load profile data.");
+    AsyncStorage.getItem('user').then(data => {
+      if (data) {
+        const userData = JSON.parse(data);
+        setUser(u => ({
+          ...u,
+          ...userData,
+        }));
       }
-    })();
-  }, [mobile]);
-
-  // Pick image from device
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission denied", "Camera roll permissions are required.");
-      return;
-    }
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
-      aspect: [1, 1],
     });
-
-    if (!result.cancelled) {
-      await uploadImage(result.uri);
-    }
-  };
-
-  // Upload image to Firebase Storage
-  const uploadImage = async (uri) => {
-    setUploading(true);
-    try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const storageRef = ref(storage, `profile_images/${userDocId}.jpg`);
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-
-      // Save URL to Firestore user doc
-      const userRef = doc(db, "users", userDocId);
-      await updateDoc(userRef, { photoURL: downloadURL });
-      setImageUri(downloadURL);
-      Alert.alert("Success", "Profile picture updated!");
-    } catch (error) {
-      Alert.alert("Upload failed", error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // Remove profile picture
-  const removeImage = () => {
-    if (!imageUri) {
-      Alert.alert("No profile picture to remove.");
-      return;
-    }
-    Alert.alert(
-      "Confirm",
-      "Are you sure you want to remove your profile picture?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            setUploading(true);
-            try {
-              const storageRef = ref(storage, `profile_images/${userDocId}.jpg`);
-              await deleteObject(storageRef);
-              const userRef = doc(db, "users", userDocId);
-              await updateDoc(userRef, { photoURL: "" });
-              setImageUri(null);
-              Alert.alert("Removed", "Profile picture removed.");
-            } catch (err) {
-              Alert.alert("Error", err.message);
-            } finally {
-              setUploading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Save profile info edits
-  const saveInfo = async () => {
-    if (!name.trim() || !building.trim() || !flatNumber.trim()) {
-      Alert.alert("Validation error", "Name, Building, and Flat Number are required.");
-      return;
-    }
-    setUpdatingInfo(true);
-    try {
-      const userRef = doc(db, "users", userDocId);
-      await updateDoc(userRef, { name, building, flatNumber });
-      Alert.alert("Success", "Profile information updated.");
-      setEditing(false);
-    } catch (err) {
-      Alert.alert("Update failed", err.message);
-    } finally {
-      setUpdatingInfo(false);
-    }
-  };
+  }, []);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>My Profile</Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{paddingBottom: 40}}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <Ionicons name="menu" size={26} color="#222" />
+          <Text style={styles.headerTitle}>Account</Text>
+          <View style={{width: 26}} />
+        </View>
 
-      <TouchableOpacity onPress={uploading ? null : pickImage} style={styles.imageContainer}>
-        {uploading ? (
-          <ActivityIndicator size="large" color="#007AFF" />
-        ) : imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.profileImage} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>Tap to select photo</Text>
+        {/* User Info Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarWrap}>
+            {user.photoURL ?
+              <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+              :
+              <Ionicons name="person-circle-outline" size={58} color="#C6CCD7" />
+            }
           </View>
-        )}
-      </TouchableOpacity>
+          <View>
+            <Text style={styles.nameText}>{user.name}</Text>
+            <Text style={styles.unitText}>{user.unit}</Text>
+          </View>
+        </View>
 
-      {!!imageUri && !uploading && (
-        <TouchableOpacity style={styles.removeButton} onPress={removeImage}>
-          <Text style={styles.removeText}>Remove Profile Picture</Text>
+        {/* User Information */}
+        <SectionHeader text="USER INFORMATION" />
+        <View style={styles.sectionCard}>
+          <InfoRow label="Email" value={user.email} />
+          <InfoRow label="Phone Number" value={user.phone} />
+          <TouchableOpacity onPress={() => router.push('/change-phone')}>
+            <Text style={styles.linkText}>Change Phone Number</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/change-password')}>
+            <Text style={styles.linkText}>Change Password</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* PIN CODE Section */}
+        <SectionHeader text="PIN CODE" />
+        <View style={styles.sectionCard}>
+          <View style={[styles.infoRow, {alignItems: 'center'}]}>
+            <Text style={styles.infoLabel}>PIN</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Text style={styles.pinDots}>
+                {secure ? '●●●●' : user.pin}
+              </Text>
+              <TouchableOpacity onPress={() => setSecure(s => !s)} style={{marginLeft: 10}}>
+                <Ionicons
+                  name={secure ? 'eye-off-outline' : 'eye-outline'}
+                  size={22}
+                  color="#828A9E"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/manage-pin')}>
+            <Text style={styles.linkText}>Manage PIN</Text>
+          </TouchableOpacity>
+          <Text style={styles.pinSub}>
+            You can use the PIN anytime at the touchscreen to gain access to your property.
+          </Text>
+        </View>
+
+        {/* Away Message */}
+        <SectionHeader text="AWAY MESSAGE" />
+        <TouchableOpacity
+          style={[
+            styles.sectionCard,
+            {
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            },
+          ]}
+          onPress={() => router.push('/away-message')}
+        >
+          <Text style={[styles.infoValue, {fontSize: 16}]}>{user.away}</Text>
+          <Ionicons name="chevron-forward" size={22} color="#B4BAC4" />
         </TouchableOpacity>
-      )}
+        <Text style={styles.awaySub}>
+          Use this feature to leave a note in the directory for visitors/deliveries.
+        </Text>
+      </ScrollView>
 
-      {editing ? (
-        <>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Name:</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              editable={!updatingInfo}
-              autoCapitalize="words"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Building:</Text>
-            <TextInput
-              style={styles.input}
-              value={building}
-              onChangeText={setBuilding}
-              editable={!updatingInfo}
-              autoCapitalize="words"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Flat Number:</Text>
-            <TextInput
-              style={styles.input}
-              value={flatNumber}
-              onChangeText={setFlatNumber}
-              editable={!updatingInfo}
-              autoCapitalize="characters"
-            />
-          </View>
-          <TouchableOpacity
-            style={[styles.button, updatingInfo && styles.buttonDisabled]}
-            onPress={saveInfo}
-            disabled={updatingInfo}
-          >
-            {updatingInfo ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Save</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => setEditing(false)} disabled={updatingInfo}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <View style={styles.infoBox}>
-            <Text style={styles.label}>Name:</Text>
-            <Text style={styles.value}>{name || "N/A"}</Text>
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.label}>Building:</Text>
-            <Text style={styles.value}>{building || "N/A"}</Text>
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.label}>Flat Number:</Text>
-            <Text style={styles.value}>{flatNumber || "N/A"}</Text>
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.label}>Mobile Number:</Text>
-            <Text style={styles.value}>{mobile || "N/A"}</Text>
-          </View>
+      {/* Bottom Tab */}
+      <View style={styles.tabBar}>
+        <TabIcon icon="home-outline" label="Home" onPress={() => router.push('/')} />
+        <TabIcon icon="person-outline" label="Visitors" onPress={() => router.push('/visitors')} />
+        <TabIcon icon="settings-outline" label="Account" active />
+      </View>
+    </View>
+  );
+}
 
-          <TouchableOpacity style={styles.editButton} onPress={() => setEditing(true)}>
-            <Text style={styles.editText}>Edit Profile Info</Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      <Link href="/main" style={styles.backLink}>
-        <Text style={styles.backText}>⬅ Back to Main</Text>
-      </Link>
-    </ScrollView>
+// Section and Row components
+function SectionHeader({ text }) {
+  return (
+    <Text style={styles.sectionHeader}>{text}</Text>
+  );
+}
+function InfoRow({ label, value }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+function TabIcon({ icon, label, active, onPress }) {
+  return (
+    <TouchableOpacity style={styles.tabIconWrap} onPress={onPress} activeOpacity={0.7}>
+      <Ionicons name={icon} size={25} color={active ? '#276CF0' : '#A3A8B3'} />
+      <Text style={[styles.tabLabel, { color: active ? '#276CF0' : '#A3A8B3' }]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20, backgroundColor: "#fff", alignItems: "center" },
-  title: { fontSize: 26, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
-  imageContainer: {
-    borderRadius: 75,
-    overflow: "hidden",
-    width: 150,
-    height: 150,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#eee",
-    marginBottom: 12,
+  container: { flex: 1, backgroundColor: BG_COLOR },
+  headerRow: {
+    marginTop: 15,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 7,
+    justifyContent: 'space-between'
   },
-  profileImage: { width: 150, height: 150 },
-  placeholder: {
-    justifyContent: "center",
-    alignItems: "center",
+  headerTitle: {
+    fontSize: 20, fontWeight: '700', color: '#383838'
+  },
+  profileCard: {
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    flexDirection: 'row',
+    borderRadius: 14,
+    elevation: 1,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    padding: 14,
+  },
+  avatarWrap: { marginRight: 14 },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#D3D9E4' },
+  nameText: { fontSize: 18, fontWeight: 'bold', color: '#262932' },
+  unitText: { fontSize: 13.5, color: '#7C8592', fontWeight: '500' },
+
+  sectionHeader: {
+    fontSize: 11.5,
+    marginLeft: 20,
+    marginVertical: 6,
+    fontWeight: '700',
+    color: '#A3A9B0',
+    letterSpacing: 0.6
+  },
+  sectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 13,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    padding: 14,
+    elevation: 1,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 7,
+  },
+  infoLabel: { color: '#8A93A6', fontSize: 15, fontWeight: '600', marginRight: 12 },
+  infoValue: { color: '#262932', fontSize: 15, fontWeight: '500', maxWidth: '60%' },
+  linkText: {
+    color: '#276CF0',
+    fontWeight: '700',
+    fontSize: 15,
+    alignSelf: 'flex-start',
+    marginVertical: 4,
+  },
+  pinDots: {
+    color: '#262932', fontSize: 19, letterSpacing: 7, fontWeight: '600'
+  },
+  pinSub: {
+    color: '#ADB1BD',
+    fontSize: 12.5,
+    marginTop: 5,
+    lineHeight: 15,
+  },
+  awaySub: {
+    marginHorizontal: 19,
+    color: '#ACB2B7',
+    fontSize: 12.5,
+    marginTop: 2,
+    marginBottom: 8,
+    lineHeight: 15,
+  },
+  tabBar: {
+    height: 62,
+    backgroundColor: '#fff',
+    borderTopColor: '#DFE4EA',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    elevation: 5,
+  },
+  tabIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
   },
-  placeholderText: {
-    color: "#666",
+  tabLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
-  removeButton: {
-    marginBottom: 20,
-  },
-  removeText: {
-    color: "red",
-    textDecorationLine: "underline",
-  },
-  infoBox: {
-    flexDirection: "row",
-    marginBottom: 15,
-    width: "100%",
-    paddingHorizontal: 20,
-  },
-  label: {
-    fontWeight: "bold",
-    fontSize: 16,
-    marginRight: 8,
-    width: 120,
-  },
-  value: { fontSize: 16, flexShrink: 1 },
-  inputGroup: {
-    width: "100%",
-    marginBottom: 15,
-    paddingHorizontal: 20,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    backgroundColor: "#fff",
-  },
-  button: {
-    backgroundColor: "#007AFF",
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  buttonDisabled: {
-    backgroundColor: "#7ea9ff",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  cancelButton: {
-    marginBottom: 20,
-  },
-  cancelText: {
-    color: "#007AFF",
-    fontSize: 16,
-  },
-  editButton: {
-    marginTop: 10,
-  },
-  editText: {
-    color: "#007AFF",
-    fontSize: 16,
-    textDecorationLine: "underline",
-  },
-  backLink: { marginTop: 30, alignSelf: "center" },
-  backText: { color: "#007AFF", fontSize: 16 },
 });
