@@ -2,8 +2,18 @@ import { Link, useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
+import styles from '../StylingSheets/SignupStyles';
 
 export default function Signup() {
   const [name, setName] = useState('');
@@ -25,9 +35,14 @@ export default function Signup() {
   };
 
   const validateForm = () => {
-    return Object.values(errors).every(e => !e) &&
-      name.trim() && /^\d{10}$/.test(mobile) &&
-      building.trim() && flatNumber.trim() && password.length >= 6;
+    return (
+      Object.values(errors).every(e => !e) &&
+      name.trim() &&
+      /^\d{10}$/.test(mobile) &&
+      building.trim() &&
+      flatNumber.trim() &&
+      password.length >= 6
+    );
   };
 
   const handleRegister = async () => {
@@ -37,7 +52,7 @@ export default function Signup() {
     }
 
     try {
-      const email = `${mobile}@dummy.com`; // trick for Firebase Auth
+      const email = `${mobile}@dummy.com`;
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -45,7 +60,7 @@ export default function Signup() {
         name,
         mobile,
         building,
-        flatNumber
+        flatNumber,
       });
 
       alert(`Registration Successful! Welcome ${name}`);
@@ -56,46 +71,88 @@ export default function Signup() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign Up</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollViewContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.container}>
+            <Text style={styles.title}>Sign Up</Text>
 
-      <TextInput style={styles.input} placeholder="Name"
-        value={name} onChangeText={t => { setName(t); validateField('name', t); }} />
-      {errors.name && <Text style={styles.error}>{errors.name}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Name"
+              value={name}
+              onChangeText={t => {
+                setName(t);
+                validateField('name', t);
+              }}
+            />
+            {errors.name && <Text style={styles.error}>{errors.name}</Text>}
 
-      <TextInput style={styles.input} placeholder="Mobile Number"
-        value={mobile} onChangeText={t => { setMobile(t); validateField('mobile', t); }} keyboardType="phone-pad" />
-      {errors.mobile && <Text style={styles.error}>{errors.mobile}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Mobile Number"
+              value={mobile}
+              onChangeText={t => {
+                setMobile(t);
+                validateField('mobile', t);
+              }}
+              keyboardType="phone-pad"
+            />
+            {errors.mobile && <Text style={styles.error}>{errors.mobile}</Text>}
 
-      <TextInput style={styles.input} placeholder="Building"
-        value={building} onChangeText={t => { setBuilding(t); validateField('building', t); }} />
-      {errors.building && <Text style={styles.error}>{errors.building}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Building"
+              value={building}
+              onChangeText={t => {
+                setBuilding(t);
+                validateField('building', t);
+              }}
+            />
+            {errors.building && <Text style={styles.error}>{errors.building}</Text>}
 
-      <TextInput style={styles.input} placeholder="Flat Number"
-        value={flatNumber} onChangeText={t => { setFlatNumber(t); validateField('flatNumber', t); }} />
-      {errors.flatNumber && <Text style={styles.error}>{errors.flatNumber}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Flat Number"
+              value={flatNumber}
+              onChangeText={t => {
+                setFlatNumber(t);
+                validateField('flatNumber', t);
+              }}
+            />
+            {errors.flatNumber && <Text style={styles.error}>{errors.flatNumber}</Text>}
 
-      <TextInput style={styles.input} placeholder="Password"
-        value={password} secureTextEntry
-        onChangeText={t => { setPassword(t); validateField('password', t); }} />
-      {errors.password && <Text style={styles.error}>{errors.password}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              secureTextEntry
+              onChangeText={t => {
+                setPassword(t);
+                validateField('password', t);
+              }}
+            />
+            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
 
-      <TouchableOpacity style={styles.button} onPress={handleRegister}>
-        <Text style={styles.buttonText}>Register</Text>
-      </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={handleRegister}>
+              <Text style={styles.buttonText}>Register</Text>
+            </TouchableOpacity>
 
-      <Link href="/login" style={styles.backLink}><Text style={styles.backText}>Already have an account? Login</Text></Link>
-    </View>
+            <Link href="/login" asChild>
+              <TouchableOpacity style={styles.backLink}>
+                <Text style={styles.backText}>Already have an account? Login</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 5, fontSize: 16, backgroundColor: '#fff' },
-  button: { backgroundColor: '#007AFF', paddingVertical: 15, borderRadius: 8, alignItems: 'center', marginTop: 15 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  error: { color: 'red', fontSize: 13, marginBottom: 8 },
-  backLink: { marginTop: 20, alignSelf: 'center' },
-  backText: { color: '#007AFF', fontSize: 16 }
-});

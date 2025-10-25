@@ -1,165 +1,369 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { getAuth } from 'firebase/auth';
+import { doc, getDoc, getFirestore } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   Dimensions,
   Image,
   ImageBackground,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { app } from '../firebaseConfig';
+import { styles } from '../StylingSheets/mainPageStyles';
 
-const { width, height } = Dimensions.get('window');
-const BG_COLOR = '#F7F8FB';
+const { height } = Dimensions.get('window');
+
+function getInitials(name = '') {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 export default function MainPage() {
   const router = useRouter();
+  const db = getFirestore(app);
+  const auth = getAuth(app);
 
   const [user, setUser] = useState({
     name: '',
     flatNumber: '',
-    address: '',
+    building: '',
     profileUrl: '',
+    mobile: '',
   });
 
+  const [doorStatus, setDoorStatus] = useState('Closed');
+  const [isHolding, setIsHolding] = useState(false);
+  const [progress, setProgress] = useState(0);
+  
+  const holdTimerRef = useRef(null);
+  const autoCloseTimerRef = useRef(null);
+  const progressAnimRef = useRef(new Animated.Value(0)).current;
+  const progressIntervalRef = useRef(null);
+
   useEffect(() => {
-    AsyncStorage.getItem('user').then(data => {
-      if (data) {
-        const userData = JSON.parse(data);
-        setUser(userData);
+    async function loadUserData() {
+      try {
+        const storedUserStr = await AsyncStorage.getItem('userDetails');
+        if (storedUserStr) {
+          const storedUser = JSON.parse(storedUserStr);
+          setUser(storedUser);
+        }
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.log("No logged-in user");
+          return;
+        }
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const freshUser = userDocSnap.data();
+          setUser(freshUser);
+          await AsyncStorage.setItem('userDetails', JSON.stringify(freshUser));
+        } else {
+          console.log("User document not found for UID:", currentUser.uid);
+          await AsyncStorage.removeItem('userDetails');
+        }
+      } catch (error) {
+        console.error("Error loading user/building data: ", error);
+        await AsyncStorage.removeItem('userDetails');
       }
-    });
+    }
+    loadUserData();
+
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    };
   }, []);
 
-  const goToProfile = () => router.push('/profile');
-  const handleQuickAction = (action) => Alert.alert('Selected', action);
-  const handleSwipeOpen = (device) => Alert.alert('Opening', device);
+  const handlePressIn = () => {
+    if (doorStatus !== 'Closed') return;
+    
+    setIsHolding(true);
+    setProgress(0);
+    
+    Animated.timing(progressAnimRef, {
+      toValue: 100,
+      duration: 2000,
+      useNativeDriver: false,
+    }).start();
+
+    let progressValue = 0;
+    progressIntervalRef.current = setInterval(() => {
+      progressValue += 5;
+      setProgress(progressValue);
+      if (progressValue >= 100) {
+        clearInterval(progressIntervalRef.current);
+      }
+    }, 100);
+
+    holdTimerRef.current = setTimeout(() => {
+      handleDoorOpen();
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    }, 2000);
+  };
+
+  const handlePressOut = () => {
+    if (!isHolding) return;
+    
+    setIsHolding(false);
+    setProgress(0);
+    
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    
+    progressAnimRef.setValue(0);
+    
+    if (doorStatus === 'Closed' && progress < 100) {
+      Alert.alert('Hold Longer', 'Press and hold for 2 seconds to open door');
+    }
+  };
+
+  const handleDoorOpen = () => {
+    setIsHolding(false);
+    setDoorStatus('Opening');
+    
+    setTimeout(() => {
+      setDoorStatus('Open');
+      
+      autoCloseTimerRef.current = setTimeout(() => {
+        handleDoorClose();
+      }, 120000);
+      
+    }, 1000);
+  };
+
+  const handleDoorClose = () => {
+    setDoorStatus('Closing');
+    
+    setTimeout(() => {
+      setDoorStatus('Closed');
+      setProgress(0);
+      progressAnimRef.setValue(0);
+    }, 1000);
+  };
+
+  const getStatusColor = () => {
+    switch (doorStatus) {
+      case 'Open': return '#4CAF50';
+      case 'Opening': return '#FFA726';
+      case 'Closing': return '#FFA726';
+      case 'Closed': return '#757575';
+      default: return '#757575';
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (doorStatus) {
+      case 'Open': return 'lock-open';
+      case 'Opening': return 'hourglass-outline';
+      case 'Closing': return 'hourglass-outline';
+      case 'Closed': return 'lock-closed';
+      default: return 'lock-closed';
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      {/* Top bar and logo */}
-      <View style={styles.headerRow}>
-        <Ionicons name="menu" size={28} color="#1A1A29" style={{ marginLeft: 5 }} />
-        <Image
-          source={{ uri: 'https://butterflymx.com/static/butterflymx-logo-colored-500.png' }}
-          style={styles.logo}
-        />
-        <View style={{ width: 28 }} />
-      </View>
-
-      {/* Connected banner */}
-      <View style={styles.connectedBanner}>
-        <Text style={styles.connectedText}>Connected!</Text>
-      </View>
-
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        {/* Welcome card with image background */}
-        <View style={styles.welcomeCard}>
-          <ImageBackground
-            source={require('../assets/app_banner.jpg')}
-            style={styles.backgroundImage}
-            imageStyle={{ borderRadius: 16 }}
-          >
-            <View style={styles.textOverlay}>
-              <Text style={styles.welcomeText}>Welcome, {user.name || 'User'}!</Text>
-              <Text style={styles.unitText}>
-                {user.flatNumber ? `Unit ${user.flatNumber}` : ''}
-              </Text>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'left', 'bottom']}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          {user.profileUrl ? (
+            <Image source={{ uri: user.profileUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarInitials}>{getInitials(user.name || 'U')}</Text>
             </View>
-          </ImageBackground>
-
-          <TouchableOpacity style={styles.profileCircle} onPress={goToProfile}>
-            <Image
-              source={{
-                uri:
-                  user.profileUrl ||
-                  'https://butterflymx.com/static/butterflymx-logo-colored-500.png',
-              }}
-              style={{ width: 44, height: 44, borderRadius: 22 }}
-            />
-          </TouchableOpacity>
+          )}
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerFlatNo}>{user.flatNumber || 'Your Flat'}</Text>
+            <Text style={styles.headerAddress}>{user.building || 'Building Name'}</Text>
+          </View>
+          <Ionicons name="chatbubble-ellipses-outline" size={26} color="#222" />
         </View>
 
-        {/* Guest Invite (Quick Create) Card */}
-        <View style={styles.modalCard}>
-          <Text style={styles.title}>Guest Invite</Text>
-          <Text style={styles.subtitle}>
-            Create pre-approval of expected visitors to ensure hassle-free entry for them
-          </Text>
-
-          {/* Quick Invite */}
-          <TouchableOpacity
-            style={styles.inviteOption}
-            onPress={() => handleQuickAction('Quick Invite')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.inviteTextWrap}>
-              <Text style={styles.inviteTitle}>Quick Invite &gt;</Text>
-              <Text style={styles.inviteDesc}>
-                Ensure smooth entry by manually pre-approving guests. Best for small, personal gatherings.
-              </Text>
-            </View>
-            <Ionicons name="person-add-outline" size={30} color="#22343C" />
-          </TouchableOpacity>
-
-          {/* Party/Group Invite */}
-          <TouchableOpacity
-            style={styles.inviteOption}
-            onPress={() => handleQuickAction('Party/Group Invite')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.inviteTextWrap}>
-              <Text style={styles.inviteTitle}>Party/Group Invite &gt;</Text>
-              <Text style={styles.inviteDesc}>
-                Create a common guest invite link with a limit for large gatherings and easy tracking.
-              </Text>
-            </View>
-            <Ionicons name="people-outline" size={30} color="#22343C" />
-          </TouchableOpacity>
-
-          {/* Frequent Invite */}
-          <TouchableOpacity
-            style={styles.inviteOption}
-            onPress={() => handleQuickAction('Frequent Invite')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.inviteTextWrap}>
-              <Text style={styles.inviteTitle}>Frequent Invite &gt;</Text>
-              <Text style={styles.inviteDesc}>
-                Invite long-term guests with a single passcode, without repeated approvals.
-              </Text>
-            </View>
-            <Ionicons name="repeat-outline" size={30} color="#22343C" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Single device/intercom card */}
-        <View style={styles.cardContainer}>
-          <View style={styles.deviceCard}>
-            <Text style={styles.deviceTitle}>Jack's MacBook Monarch Intercom</Text>
-            <TouchableOpacity
-              style={[styles.swipeBtn, { backgroundColor: '#39B5F6' }]}
-              onPress={() => handleSwipeOpen("Jack's MacBook Monarch Intercom")}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: height * 0.14, paddingTop: height * 0.04 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Welcome card */}
+          <View style={styles.welcomeCard}>
+            <ImageBackground
+              source={require('../assets/images/welcome_img.png')}
+              style={styles.backgroundImage}
+              imageStyle={{ borderRadius: 16, resizeMode: 'cover' }}
             >
-              <Text style={styles.swipeText}>SWIPE TO OPEN</Text>
-              <Ionicons name="arrow-forward-outline" size={22} color="#fff" />
+              <View style={styles.textOverlay}>
+                <Text style={styles.welcomeText}>Welcome, {user.name || 'User'}!</Text>
+                <Text style={styles.unitText}>
+                  {user.flatNumber ? `Unit ${user.flatNumber}` : ''}
+                </Text>
+              </View>
+            </ImageBackground>
+          </View>
+
+          {/* Guest Invite Card */}
+          <View style={styles.modalCard}>
+            <Text style={styles.title}>Guest Invite</Text>
+            <Text style={styles.subtitle}>
+              Create pre-approval of expected visitors to ensure hassle-free entry for them
+            </Text>
+            <TouchableOpacity
+              style={styles.inviteOption}
+              onPress={() => router.push('/quick-invite')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.inviteTextWrap}>
+                <Text style={styles.inviteTitle}>Quick Invite &gt;</Text>
+                <Text style={styles.inviteDesc}>
+                  Ensure smooth entry by manually pre-approving guests. Best for small, personal gatherings.
+                </Text>
+              </View>
+              <Ionicons name="person-add-outline" size={30} color="#22343C" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inviteOption}
+              onPress={() => router.push('/party-group-invite')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.inviteTextWrap}>
+                <Text style={styles.inviteTitle}>Party/Group Invite &gt;</Text>
+                <Text style={styles.inviteDesc}>
+                  Create a common guest invite link with a limit for large gatherings and easy tracking.
+                </Text>
+              </View>
+              <Ionicons name="people-outline" size={30} color="#22343C" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inviteOption}
+              onPress={() => router.push('/frequent-visitor-invite')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.inviteTextWrap}>
+                <Text style={styles.inviteTitle}>Frequent Invite &gt;</Text>
+                <Text style={styles.inviteDesc}>
+                  Invite long-term guests with a single passcode, without repeated approvals.
+                </Text>
+              </View>
+              <Ionicons name="repeat-outline" size={30} color="#22343C" />
             </TouchableOpacity>
           </View>
-        </View>
-      </ScrollView>
 
-      {/* Bottom tab bar */}
-      <View style={styles.tabBar}>
-        <TabIcon icon="home-outline" label="Home" onPress={() => router.push('/')} />
-        <TabIcon icon="person-outline" label="Visitors" onPress={() => router.push('/visitors')} />
-        <TabIcon icon="settings-outline" label="Account" active onPress={goToProfile} />
+          {/* Intercom Card */}
+          <View style={styles.cardContainer}>
+            <View style={styles.deviceCard}>
+              <View style={styles.intercomHeader}>
+                <Ionicons name="home-outline" size={24} color="#276CF0" />
+                <Text style={styles.deviceTitle}>{user.name}'s Intercom</Text>
+              </View>
+
+              <View style={[styles.statusCard, { backgroundColor: `${getStatusColor()}15` }]}>
+                <Ionicons name={getStatusIcon()} size={32} color={getStatusColor()} />
+                <View style={styles.statusTextContainer}>
+                  <Text style={styles.statusLabel}>Door Status</Text>
+                  <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                    {doorStatus}
+                  </Text>
+                  {doorStatus === 'Open' && (
+                    <Text style={styles.autoCloseText}>Auto-closes in 2 minutes</Text>
+                  )}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.holdButton,
+                  doorStatus !== 'Closed' && styles.holdButtonDisabled,
+                  isHolding && styles.holdButtonActive,
+                ]}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+                activeOpacity={0.9}
+                disabled={doorStatus !== 'Closed'}
+              >
+                <View style={styles.buttonContent}>
+                  <Ionicons 
+                    name={doorStatus === 'Closed' ? 'lock-open-outline' : 'lock-closed-outline'} 
+                    size={24} 
+                    color="#fff" 
+                  />
+                  <Text style={styles.holdButtonText}>
+                    {doorStatus === 'Closed' ? 'Hold to Open Door' : 'Door ' + doorStatus}
+                  </Text>
+                  {isHolding && (
+                    <Text style={styles.holdProgress}>{Math.round(progress)}%</Text>
+                  )}
+                </View>
+                
+                {isHolding && (
+                  <View style={styles.progressBarContainer}>
+                    <Animated.View 
+                      style={[
+                        styles.progressBar,
+                        {
+                          width: progressAnimRef.interpolate({
+                            inputRange: [0, 100],
+                            outputRange: ['0%', '100%'],
+                          }),
+                        },
+                      ]} 
+                    />
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {doorStatus === 'Closed' && (
+                <Text style={styles.instructionText}>
+                  Press and hold for 2 seconds to unlock door
+                </Text>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Bottom tab bar */}
+        <View style={styles.tabBar}>
+          <TabIcon
+            icon="home-outline"
+            label="Home"
+            onPress={() => {
+              if (router.pathname !== '/main') {
+                router.push('/main');
+              }
+            }}
+            active={router.pathname === '/main'}
+          />
+          <TabIcon icon="person-outline" label="Visitors" onPress={() => router.push('/visitors')} />
+          <TabIcon
+            icon="settings-outline"
+            label="Account"
+            onPress={() => router.push('/profile')}
+            active={router.pathname === '/profile'}
+          />
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -171,185 +375,3 @@ function TabIcon({ icon, label, active, onPress }) {
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_COLOR },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 56,
-    paddingHorizontal: 14,
-    backgroundColor: '#fff',
-    elevation: 2,
-  },
-  logo: {
-    width: 130,
-    height: 24,
-    resizeMode: 'contain',
-  },
-  connectedBanner: {
-    backgroundColor: '#23C36B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 28,
-  },
-  connectedText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-    letterSpacing: 0.3,
-  },
-  welcomeCard: {
-    margin: 12,
-    marginBottom: 12,
-    position: 'relative',
-  },
-  backgroundImage: {
-    width: '100%',
-    height: height * 0.25,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    borderRadius: 16,
-  },
-  textOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 12,
-    padding: 10,
-    maxWidth: '85%',
-  },
-  welcomeText: {
-    fontSize: 21,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  unitText: {
-    fontSize: 15,
-    color: '#ddd',
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  profileCircle: {
-    position: 'absolute',
-    right: 15,
-    top: 15,
-    backgroundColor: '#fff',
-    borderRadius: 25,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.13,
-    shadowRadius: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 48,
-    height: 48,
-  },
-  // Guest Invite/Quick Create modal styles
-  modalCard: {
-    width: width * 0.95,
-    backgroundColor: '#fff',
-    borderRadius: 28,
-    alignSelf: 'center',
-    paddingTop: 27,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-    elevation: 2,
-  },
-  title: {
-    fontSize: 21,
-    color: '#212224',
-    fontWeight: 'bold',
-    textAlign: 'left',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14.5,
-    color: '#6C6D70',
-    marginBottom: 14,
-    fontWeight: '400',
-  },
-  inviteOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F7F8FA',
-    borderRadius: 15,
-    marginBottom: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    minHeight: 70,
-  },
-  inviteTextWrap: {
-    flex: 1,
-    marginRight: 10,
-  },
-  inviteTitle: {
-    color: '#2A2B2F',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  inviteDesc: {
-    color: '#444950',
-    fontSize: 13,
-    fontWeight: '400',
-    opacity: 0.67,
-  },
-  cardContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginHorizontal: 12,
-    marginBottom: 16,
-    padding: 18,
-    elevation: 1,
-  },
-  deviceCard: {
-    backgroundColor: '#f8faff',
-    borderRadius: 14,
-    marginBottom: 12,
-    padding: 16,
-    elevation: 0,
-  },
-  deviceTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-    color: '#42526A',
-  },
-  swipeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 13,
-    borderRadius: 8,
-    marginTop: 3,
-  },
-  swipeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 15.5,
-    marginRight: 9,
-    letterSpacing: 0.4,
-  },
-  tabBar: {
-    height: 62,
-    backgroundColor: '#fff',
-    borderTopColor: '#DFE4EA',
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    elevation: 5,
-  },
-  tabIconWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-});

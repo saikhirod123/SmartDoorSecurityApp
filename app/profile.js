@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { getAuth } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import {
   Image,
@@ -8,31 +9,31 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 
 const BG_COLOR = '#F7F8FB';
 
 export default function AccountPage() {
   const router = useRouter();
+  const auth = getAuth();
 
-  // Dummy user data; replace with real queries/states as needed
   const [user, setUser] = useState({
     name: 'John Somarriba',
+    flatNumber: '',
+    mobile: '',
     unit: 'Unit 100',
-    email: 'john@example.com',
-    phone: '+1 555-123-4567',
     pin: '1234',
     away: 'Not Defined',
-    photoURL: ''
+    photoURL: '',
   });
   const [secure, setSecure] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem('user').then(data => {
+    AsyncStorage.getItem('userDetails').then((data) => {
       if (data) {
         const userData = JSON.parse(data);
-        setUser(u => ({
+        setUser((u) => ({
           ...u,
           ...userData,
         }));
@@ -40,36 +41,47 @@ export default function AccountPage() {
     });
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('userDetails');
+      await auth.signOut();
+      router.replace('/login');
+    } catch (error) {
+      alert('Logout failed: ' + error.message);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={{paddingBottom: 40}}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Header */}
         <View style={styles.headerRow}>
           <Ionicons name="menu" size={26} color="#222" />
           <Text style={styles.headerTitle}>Account</Text>
-          <View style={{width: 26}} />
+          <View style={{ width: 26 }} />
         </View>
 
         {/* User Info Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
-            {user.photoURL ?
+            {user.photoURL ? (
               <Image source={{ uri: user.photoURL }} style={styles.avatar} />
-              :
+            ) : (
               <Ionicons name="person-circle-outline" size={58} color="#C6CCD7" />
-            }
+            )}
           </View>
           <View>
             <Text style={styles.nameText}>{user.name}</Text>
-            <Text style={styles.unitText}>{user.unit}</Text>
+            <Text style={styles.unitText}>{user.flatNumber}</Text>
           </View>
         </View>
 
-        {/* User Information */}
+        {/* USER INFORMATION Section */}
         <SectionHeader text="USER INFORMATION" />
         <View style={styles.sectionCard}>
-          <InfoRow label="Email" value={user.email} />
-          <InfoRow label="Phone Number" value={user.phone} />
+          {/* Removed email */}
+          <InfoRow label="Flat Number" value={user.flatNumber} />
+          <InfoRow label="Phone Number" value={user.mobile} />
           <TouchableOpacity onPress={() => router.push('/change-phone')}>
             <Text style={styles.linkText}>Change Phone Number</Text>
           </TouchableOpacity>
@@ -81,18 +93,12 @@ export default function AccountPage() {
         {/* PIN CODE Section */}
         <SectionHeader text="PIN CODE" />
         <View style={styles.sectionCard}>
-          <View style={[styles.infoRow, {alignItems: 'center'}]}>
+          <View style={[styles.infoRow, { alignItems: 'center' }]}>
             <Text style={styles.infoLabel}>PIN</Text>
-            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-              <Text style={styles.pinDots}>
-                {secure ? '●●●●' : user.pin}
-              </Text>
-              <TouchableOpacity onPress={() => setSecure(s => !s)} style={{marginLeft: 10}}>
-                <Ionicons
-                  name={secure ? 'eye-off-outline' : 'eye-outline'}
-                  size={22}
-                  color="#828A9E"
-                />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.pinDots}>{secure ? '●●●●' : user.pin}</Text>
+              <TouchableOpacity onPress={() => setSecure((s) => !s)} style={{ marginLeft: 10 }}>
+                <Ionicons name={secure ? 'eye-off-outline' : 'eye-outline'} size={22} color="#828A9E" />
               </TouchableOpacity>
             </View>
           </View>
@@ -118,17 +124,31 @@ export default function AccountPage() {
           ]}
           onPress={() => router.push('/away-message')}
         >
-          <Text style={[styles.infoValue, {fontSize: 16}]}>{user.away}</Text>
+          <Text style={[styles.infoValue, { fontSize: 16 }]}>{user.away}</Text>
           <Ionicons name="chevron-forward" size={22} color="#B4BAC4" />
         </TouchableOpacity>
         <Text style={styles.awaySub}>
           Use this feature to leave a note in the directory for visitors/deliveries.
         </Text>
+
+        {/* Logout Button */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Bottom Tab */}
       <View style={styles.tabBar}>
-        <TabIcon icon="home-outline" label="Home" onPress={() => router.push('/')} />
+        <TabIcon
+          icon="home-outline"
+          label="Home"
+          active={router.pathname === '/main'}
+          onPress={() => {
+            if (router.pathname !== '/main') {
+              router.push('/main');
+            }
+          }}
+        />
         <TabIcon icon="person-outline" label="Visitors" onPress={() => router.push('/visitors')} />
         <TabIcon icon="settings-outline" label="Account" active />
       </View>
@@ -136,11 +156,8 @@ export default function AccountPage() {
   );
 }
 
-// Section and Row components
 function SectionHeader({ text }) {
-  return (
-    <Text style={styles.sectionHeader}>{text}</Text>
-  );
+  return <Text style={styles.sectionHeader}>{text}</Text>;
 }
 function InfoRow({ label, value }) {
   return (
@@ -167,10 +184,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 7,
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
   },
   headerTitle: {
-    fontSize: 20, fontWeight: '700', color: '#383838'
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#383838',
   },
   profileCard: {
     backgroundColor: '#fff',
@@ -193,7 +212,7 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     fontWeight: '700',
     color: '#A3A9B0',
-    letterSpacing: 0.6
+    letterSpacing: 0.6,
   },
   sectionCard: {
     backgroundColor: '#fff',
@@ -219,7 +238,10 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   pinDots: {
-    color: '#262932', fontSize: 19, letterSpacing: 7, fontWeight: '600'
+    color: '#262932',
+    fontSize: 19,
+    letterSpacing: 7,
+    fontWeight: '600',
   },
   pinSub: {
     color: '#ADB1BD',
@@ -234,6 +256,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 8,
     lineHeight: 15,
+  },
+  logoutButton: {
+    backgroundColor: '#EF4444',
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 8,
+    paddingVertical: 12,
+  },
+  logoutButtonText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 16,
+    textAlign: 'center',
   },
   tabBar: {
     height: 62,

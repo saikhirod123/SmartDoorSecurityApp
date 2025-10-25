@@ -3,8 +3,18 @@ import { Link, useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
+import styles from '../StylingSheets/LoginStyles'; // use the same folder and similar style file as signup
 
 export default function Login() {
   const [building, setBuilding] = useState('');
@@ -39,17 +49,16 @@ export default function Login() {
       const email = `${mobile}@dummy.com`;
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
       const docRef = doc(db, 'users', user.uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        const profileData = docSnap.data(); // contains name, building, flatNumber, mobile
-        await AsyncStorage.setItem('user', JSON.stringify(profileData));
-
+        const profileData = docSnap.data();
+        // Save user profile data to AsyncStorage for persistence
+        await AsyncStorage.setItem('userDetails', JSON.stringify(profileData));
         router.push({
           pathname: '/main',
-          params: profileData
+          params: profileData,
         });
       } else {
         alert('No user profile found');
@@ -60,46 +69,78 @@ export default function Login() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.scrollViewContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.container}>
+            <Text style={styles.title}>Login</Text>
 
-      <TextInput style={styles.input} placeholder="Building Name"
-        value={building} onChangeText={t => { setBuilding(t); validateField('building', t); }} />
-      {errors.building && <Text style={styles.error}>{errors.building}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Building Name"
+              value={building}
+              onChangeText={t => {
+                setBuilding(t);
+                validateField('building', t);
+              }}
+            />
+            {errors.building && <Text style={styles.error}>{errors.building}</Text>}
 
-      <TextInput style={styles.input} placeholder="Flat Number"
-        value={flatNumber} onChangeText={t => { setFlatNumber(t); validateField('flatNumber', t); }} />
-      {errors.flatNumber && <Text style={styles.error}>{errors.flatNumber}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Flat Number"
+              value={flatNumber}
+              onChangeText={t => {
+                setFlatNumber(t);
+                validateField('flatNumber', t);
+              }}
+            />
+            {errors.flatNumber && <Text style={styles.error}>{errors.flatNumber}</Text>}
 
-      <TextInput style={styles.input} placeholder="Mobile Number"
-        value={mobile} onChangeText={t => { setMobile(t); validateField('mobile', t); }} keyboardType="phone-pad" />
-      {errors.mobile && <Text style={styles.error}>{errors.mobile}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Mobile Number"
+              value={mobile}
+              onChangeText={t => {
+                setMobile(t);
+                validateField('mobile', t);
+              }}
+              keyboardType="phone-pad"
+            />
+            {errors.mobile && <Text style={styles.error}>{errors.mobile}</Text>}
 
-      <TextInput style={styles.input} placeholder="Password"
-        value={password} secureTextEntry
-        onChangeText={t => { setPassword(t); validateField('password', t); }} />
-      {errors.password && <Text style={styles.error}>{errors.password}</Text>}
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              secureTextEntry
+              onChangeText={t => {
+                setPassword(t);
+                validateField('password', t);
+              }}
+            />
+            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
 
-      <TouchableOpacity
-        style={[styles.button, !isFormValid && styles.buttonDisabled]}
-        onPress={handleLogin}
-        disabled={!isFormValid}>
-        <Text style={styles.buttonText}>Login</Text>
-      </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, !isFormValid && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={!isFormValid}
+            >
+              <Text style={styles.buttonText}>Login</Text>
+            </TouchableOpacity>
 
-      <Link href="/" style={styles.backLink}><Text style={styles.backText}>⬅ Back to Home</Text></Link>
-    </View>
+            <Link href="/" asChild>
+              <TouchableOpacity style={styles.backLink}>
+                <Text style={styles.backText}>⬅ Back to Home</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 5, fontSize: 16, backgroundColor: '#fff' },
-  button: { backgroundColor: '#34C759', paddingVertical: 15, borderRadius: 8, alignItems: 'center', marginTop: 15 },
-  buttonDisabled: { backgroundColor: '#ccc' },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  error: { color: 'red', fontSize: 13, marginBottom: 8 },
-  backLink: { marginTop: 20, alignSelf: 'center' },
-  backText: { color: '#007AFF', fontSize: 16 }
-});
